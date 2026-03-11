@@ -1,0 +1,235 @@
+-- Создание базы данных
+CREATE DATABASE IF NOT EXISTS internet_access_manager
+CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+USE internet_access_manager;
+
+-- Таблица пользователей
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL COMMENT 'Хранится в открытом виде (только для разработки!)',
+    email VARCHAR(100) NOT NULL UNIQUE,
+    role ENUM('Administrator', 'Technician', 'Teacher') NOT NULL DEFAULT 'Teacher',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login_at DATETIME NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    INDEX idx_role (role),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Таблица аудиторий
+CREATE TABLE IF NOT EXISTS audiences (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    building VARCHAR(100) NULL,
+    floor INT NULL,
+    description TEXT NULL,
+    current_status ENUM('FullAccess', 'NoAccess', 'SafeMode') NOT NULL DEFAULT 'FullAccess',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    INDEX idx_status (current_status),
+    INDEX idx_building (building),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Таблица компьютеров
+CREATE TABLE IF NOT EXISTS computers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    mac_address VARCHAR(17) NULL,
+    audience_id INT NOT NULL,
+    current_status ENUM('FullAccess', 'NoAccess', 'SafeMode') NOT NULL DEFAULT 'FullAccess',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    FOREIGN KEY (audience_id) REFERENCES audiences(id) ON DELETE CASCADE,
+    INDEX idx_ip_address (ip_address),
+    INDEX idx_audience_id (audience_id),
+    INDEX idx_status (current_status),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Таблица назначенных аудиторий
+CREATE TABLE IF NOT EXISTS assigned_audiences (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    audience_id INT NOT NULL,
+    assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    assigned_by_user_id INT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (audience_id) REFERENCES audiences(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_by_user_id) REFERENCES users(id),
+    UNIQUE INDEX unique_user_audience (user_id, audience_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_audience_id (audience_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Таблица логов действий
+CREATE TABLE IF NOT EXISTS action_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    description TEXT NULL,
+    audience_id INT NULL,
+    computer_id INT NULL,
+    old_status VARCHAR(20) NULL,
+    new_status VARCHAR(20) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ip_address VARCHAR(45) NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (audience_id) REFERENCES audiences(id) ON DELETE SET NULL,
+    FOREIGN KEY (computer_id) REFERENCES computers(id) ON DELETE SET NULL,
+    INDEX idx_user_id (user_id),
+    INDEX idx_audience_id (audience_id),
+    INDEX idx_computer_id (computer_id),
+    INDEX idx_created_at (created_at),
+    INDEX idx_action (action)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Таблица блокировки системы
+CREATE TABLE IF NOT EXISTS system_locks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+    locked_by_user_id INT NULL,
+    locked_at DATETIME NULL,
+    reason TEXT NULL,
+    FOREIGN KEY (locked_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_is_locked (is_locked)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Вставка начальных данных (пароли в открытом виде!)
+-- Администратор (пароль: admin123)
+INSERT INTO users (username, password, email, role, created_at, is_active) VALUES
+('admin', 'admin123', 'admin@localhost', 'Administrator', NOW(), TRUE);
+
+-- Тестовый преподаватель (пароль: teacher123)
+INSERT INTO users (username, password, email, role, created_at, is_active) VALUES
+('teacher', 'teacher123', 'teacher@localhost', 'Teacher', NOW(), TRUE);
+
+-- Тестовый техник (пароль: tech123)
+INSERT INTO users (username, password, email, role, created_at, is_active) VALUES
+('technician', 'tech123', 'tech@localhost', 'Technician', NOW(), TRUE);
+
+-- Тестовые аудитории
+INSERT INTO audiences (name, building, floor, description, current_status, created_at, updated_at, is_active) VALUES
+('Аудитория 101', 'Главный корпус', 1, 'Компьютерный класс', 'FullAccess', NOW(), NOW(), TRUE),
+('Аудитория 102', 'Главный корпус', 1, 'Лекционный зал', 'FullAccess', NOW(), NOW(), TRUE),
+('Аудитория 201', 'Главный корпус', 2, 'Лаборатория', 'FullAccess', NOW(), NOW(), TRUE),
+('Аудитория 202', 'Главный корпус', 2, 'Компьютерный класс', 'FullAccess', NOW(), NOW(), TRUE),
+('Аудитория 301', 'Главный корпус', 3, 'Серверная', 'FullAccess', NOW(), NOW(), TRUE);
+
+-- Тестовые компьютеры для аудитории 101
+INSERT INTO computers (name, ip_address, mac_address, audience_id, current_status, created_at, updated_at, is_active) VALUES
+('PC-101-01', '192.168.1.101', '00:1A:2B:3C:4D:01', 1, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-101-02', '192.168.1.102', '00:1A:2B:3C:4D:02', 1, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-101-03', '192.168.1.103', '00:1A:2B:3C:4D:03', 1, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-101-04', '192.168.1.104', '00:1A:2B:3C:4D:04', 1, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-101-05', '192.168.1.105', '00:1A:2B:3C:4D:05', 1, 'FullAccess', NOW(), NOW(), TRUE);
+
+-- Компьютеры для аудитории 102
+INSERT INTO computers (name, ip_address, mac_address, audience_id, current_status, created_at, updated_at, is_active) VALUES
+('PC-102-01', '192.168.1.106', '00:1A:2B:3C:4D:06', 2, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-102-02', '192.168.1.107', '00:1A:2B:3C:4D:07', 2, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-102-03', '192.168.1.108', '00:1A:2B:3C:4D:08', 2, 'FullAccess', NOW(), NOW(), TRUE);
+
+-- Компьютеры для аудитории 201
+INSERT INTO computers (name, ip_address, mac_address, audience_id, current_status, created_at, updated_at, is_active) VALUES
+('PC-201-01', '192.168.1.109', '00:1A:2B:3C:4D:09', 3, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-201-02', '192.168.1.110', '00:1A:2B:3C:4D:10', 3, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-201-03', '192.168.1.111', '00:1A:2B:3C:4D:11', 3, 'FullAccess', NOW(), NOW(), TRUE);
+
+-- Компьютеры для аудитории 202
+INSERT INTO computers (name, ip_address, mac_address, audience_id, current_status, created_at, updated_at, is_active) VALUES
+('PC-202-01', '192.168.1.112', '00:1A:2B:3C:4D:12', 4, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-202-02', '192.168.1.113', '00:1A:2B:3C:4D:13', 4, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-202-03', '192.168.1.114', '00:1A:2B:3C:4D:14', 4, 'FullAccess', NOW(), NOW(), TRUE);
+
+-- Компьютеры для аудитории 301
+INSERT INTO computers (name, ip_address, mac_address, audience_id, current_status, created_at, updated_at, is_active) VALUES
+('PC-301-01', '192.168.1.115', '00:1A:2B:3C:4D:15', 5, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-301-02', '192.168.1.116', '00:1A:2B:3C:4D:16', 5, 'FullAccess', NOW(), NOW(), TRUE),
+('PC-301-03', '192.168.1.117', '00:1A:2B:3C:4D:17', 5, 'FullAccess', NOW(), NOW(), TRUE);
+
+-- Назначение аудиторий преподавателю (teacher)
+INSERT INTO assigned_audiences (user_id, audience_id, assigned_at, assigned_by_user_id) VALUES
+(2, 1, NOW(), 1),  -- teacher может управлять аудиторией 101
+(2, 2, NOW(), 1),  -- teacher может управлять аудиторией 102
+(2, 3, NOW(), 1);  -- teacher может управлять аудиторией 201
+
+-- Системная блокировка (по умолчанию разблокирована)
+INSERT INTO system_locks (is_locked, locked_by_user_id, locked_at, reason) VALUES
+(FALSE, NULL, NULL, NULL);
+
+-- Пример логов действий
+INSERT INTO action_logs (user_id, action, description, audience_id, computer_id, old_status, new_status, created_at, ip_address) VALUES
+(1, 'Login', 'User logged in successfully', NULL, NULL, NULL, NULL, NOW(), '127.0.0.1'),
+(1, 'CreateAudience', 'Created audience: Аудитория 101', 1, NULL, NULL, NULL, NOW(), '127.0.0.1'),
+(1, 'CreateComputer', 'Created computer: PC-101-01 in audience Аудитория 101', 1, 1, NULL, NULL, NOW(), '127.0.0.1'),
+(2, 'ChangeAudienceStatus', 'Changed audience status from FullAccess to NoAccess', 1, NULL, 'FullAccess', 'NoAccess', NOW(), '192.168.1.100');
+
+-- Представление для удобного просмотра аудиторий с количеством компьютеров
+CREATE OR REPLACE VIEW view_audiences_with_stats AS
+SELECT 
+    a.*,
+    COUNT(c.id) as computers_count,
+    SUM(CASE WHEN c.current_status = 'FullAccess' THEN 1 ELSE 0 END) as computers_full_access,
+    SUM(CASE WHEN c.current_status = 'NoAccess' THEN 1 ELSE 0 END) as computers_no_access,
+    SUM(CASE WHEN c.current_status = 'SafeMode' THEN 1 ELSE 0 END) as computers_safe_mode
+FROM audiences a
+LEFT JOIN computers c ON c.audience_id = a.id AND c.is_active = TRUE
+WHERE a.is_active = TRUE
+GROUP BY a.id;
+
+-- Представление для просмотра назначенных аудиторий с именами
+CREATE OR REPLACE VIEW view_assigned_audiences AS
+SELECT 
+    aa.*,
+    u.username as user_name,
+    a.name as audience_name,
+    a.building,
+    a.floor,
+    admin.username as assigned_by_user_name
+FROM assigned_audiences aa
+JOIN users u ON u.id = aa.user_id
+JOIN audiences a ON a.id = aa.audience_id
+JOIN users admin ON admin.id = aa.assigned_by_user_id;
+
+-- Процедура для смены статуса аудитории (массовое обновление компьютеров)
+DELIMITER $$
+CREATE PROCEDURE sp_change_audience_status(
+    IN p_audience_id INT,
+    IN p_new_status ENUM('FullAccess', 'NoAccess', 'SafeMode'),
+    IN p_user_id INT,
+    IN p_ip_address VARCHAR(45)
+)
+BEGIN
+    DECLARE v_old_status VARCHAR(20);
+    DECLARE v_audience_name VARCHAR(100);
+    
+    -- Получаем старый статус и название аудитории
+    SELECT current_status, name INTO v_old_status, v_audience_name
+    FROM audiences WHERE id = p_audience_id;
+    
+    -- Обновляем статус аудитории
+    UPDATE audiences 
+    SET current_status = p_new_status 
+    WHERE id = p_audience_id;
+    
+    -- Обновляем статус всех компьютеров в аудитории
+    UPDATE computers 
+    SET current_status = p_new_status 
+    WHERE audience_id = p_audience_id AND is_active = TRUE;
+    
+    -- Логируем действие
+    INSERT INTO action_logs (user_id, action, description, audience_id, old_status, new_status, ip_address)
+    VALUES (p_user_id, 'ChangeAudienceStatus', 
+            CONCAT('Changed audience "', v_audience_name, '" status from ', v_old_status, ' to ', p_new_status),
+            p_audience_id, v_old_status, p_new_status, p_ip_address);
+END$$
+DELIMITER ;
+
+-- Пример использования процедуры:
+-- CALL sp_change_audience_status(1, 'NoAccess', 2, '192.168.1.100');
